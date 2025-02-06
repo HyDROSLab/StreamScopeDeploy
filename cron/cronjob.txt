@@ -21,4 +21,4 @@
 # For more information see the manual pages of crontab(5) and cron(8)
 # 
 # m h  dom mon dow   command
-*/15 * * * *	bash /home/streamscope/StreamScopeDeploy/deploy.sh
+*/60 * * * * /home/streamscope/StreamScopeDeploy/deploy.sh 1> /home/streamscope/cron_log.txt 2> /home/streamscope/cron_err.txt
