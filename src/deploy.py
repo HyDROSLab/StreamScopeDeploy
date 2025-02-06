@@ -86,7 +86,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-client = ModbusClient(port='COM8', baudrate=19200, timeout=1)
+client = ModbusClient(port='/dev/ttyUSB0', baudrate=19200, timeout=1)
 client.connect()
 
 def write_results(sweep):
