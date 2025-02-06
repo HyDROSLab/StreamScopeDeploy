@@ -8,15 +8,6 @@ import requests
 import logging
 from datetime import datetime
 
-static_ip = ''
-
-angles = [angle + 32768 for angle in [-35, -30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35]]
-num_angles = 9
-num_measurements = 30
-num_sweeps = 1
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 class LidarMeasurement:
     def __init__(self):
         self.angle = 0.0
@@ -77,6 +68,23 @@ EEPROM_ANGLES_START_REG = 2003
 ACCELEROMETER_AVAILABLE_REG = 2100
 STATE_REG = 2101
 RESET_REG = 2102
+
+angles = [angle + 32768 for angle in [-40, -30, -20, -10, 0, 10, 20, 30, 40]]
+num_angles = 9
+num_measurements = 30
+num_sweeps = 1
+
+static_ip = ''
+
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+log_file = os.path.join(log_dir, 'deploy.log')
+logging.basicConfig(
+    filename=log_file,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 client = ModbusClient(port='COM8', baudrate=19200, timeout=1)
 client.connect()
@@ -151,14 +159,14 @@ def write_results(sweep):
     else:
         logging.error("Results written to file but failed to send to server.")
 
-def deploy():
+def write_sweep_parameters():
+    client.write_register(NUM_ANGLES_REG, num_angles)
+    client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
+    client.write_register(NUM_SWEEPS_REG, num_sweeps)
+    client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
+    client.write_register(SWEEP_TYPE_REG, 2)
 
-    def write_sweep_parameters():
-        client.write_register(NUM_ANGLES_REG, num_angles)
-        client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
-        client.write_register(NUM_SWEEPS_REG, num_sweeps)
-        client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
-        client.write_register(SWEEP_TYPE_REG, 2)
+def deploy():
 
     logging.info("Writing sweep parameters.")
     write_sweep_parameters()
@@ -210,12 +218,3 @@ if __name__ == "__main__":
         main()
     finally:
         client.close()
-        
-        log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-
-        log_file = os.path.join(log_dir, 'deploy.log')
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ])
