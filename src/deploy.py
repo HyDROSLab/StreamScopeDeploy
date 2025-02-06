@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 
 # Add project folder to path
-sys.path.insert(0,'../')
+sys.path.insert(0,'/home/streamscope/StreamScopeDeploy/')
 
 class LidarMeasurement:
     def __init__(self):
@@ -95,7 +95,7 @@ client.connect()
 def write_results(sweep):
 
     current_time = datetime.now()
-    out_folder = "./data"
+    out_folder = "/home/streamscope/StreamScopeDeploy/data"
     file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
     if not os.path.isfile(file_name):
