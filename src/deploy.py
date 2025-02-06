@@ -1,10 +1,10 @@
 from pymodbus.client import ModbusSerialClient as ModbusClient
+import pysftp
 import time
 import sys
 import glob
 import csv
 import os
-import requests
 import logging
 from datetime import datetime
 
@@ -77,7 +77,7 @@ num_angles = 9
 num_measurements = 30
 num_sweeps = 1
 
-static_ip = ''
+static_ip = '13.83.7.88'
 
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
 os.makedirs(log_dir, exist_ok=True)
@@ -156,11 +156,17 @@ def write_results(sweep):
     if not os.path.isfile(file_name):
         with open(file_name, 'rb') as f:
             files = {'file': (file_name, f, 'text/plain')}
-            response = requests.post({static_ip}, files=files)
+            logging.info("Results written to file successfully.")
 
-    if response.status_code == 200:
+    # Push output file to server via SFTP
+    srv = pysftp.Connection(host=static_ip, username="pinpoint", password="Pinpoint2025#")
+    try:
+        with srv.cd("data/fallscreek"):
+            srv.put(file_name)
+        srv.close()
         logging.info("Results written to file and sent to server successfully.")
-    else:
+    except e:
+        logging.error(e)
         logging.error("Results written to file but failed to send to server.")
 
 def write_sweep_parameters():
