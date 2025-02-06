@@ -170,6 +170,8 @@ def write_results(sweep):
         logging.error("Results written to file but failed to send to server.")
 
 def write_sweep_parameters():
+    client.write_register(RESET_REG, 1)
+    time.sleep(3)
     client.write_register(NUM_ANGLES_REG, num_angles)
     client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
     client.write_register(NUM_SWEEPS_REG, num_sweeps)
