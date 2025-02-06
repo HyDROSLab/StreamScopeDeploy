@@ -92,7 +92,8 @@ client.connect()
 def write_results(sweep):
 
     current_time = datetime.now()
-    file_name = f"streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
+    out_folder = "../data"
+    file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
     if not os.path.isfile(file_name):
         with open(file_name, 'a') as newfile:
