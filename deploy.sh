@@ -1,7 +1,7 @@
 #!/bin/bash
 
-source /path/to/venv/
+source /home/streamscope/StreamScopeDeploy/venv/bin/activate
 
-python3 deploy.py
+python3 src/deploy.py
 
 deactivate
