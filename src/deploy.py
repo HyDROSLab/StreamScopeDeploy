@@ -8,6 +8,9 @@ import requests
 import logging
 from datetime import datetime
 
+# Add project folder to path
+sys.path.insert(0,'../')
+
 class LidarMeasurement:
     def __init__(self):
         self.angle = 0.0
@@ -92,7 +95,7 @@ client.connect()
 def write_results(sweep):
 
     current_time = datetime.now()
-    out_folder = "../data"
+    out_folder = "./data"
     file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
     if not os.path.isfile(file_name):
@@ -171,13 +174,13 @@ def deploy():
 
     logging.info("Writing sweep parameters.")
     write_sweep_parameters()
-    time.sleep(180)
 
     while True:
 
         try:
             if client.read_holding_registers(MEASUREMENTS_READY_REG, 1).registers[0] == 0:
                 logging.info("Measurements are not ready yet.")
+                time.sleep(15)
             elif client.read_holding_registers(MEASUREMENTS_READY_REG, 1).registers[0] == 1:
                 logging.info("Measurements ready. Reading in measurements.")
                 sweep = LidarSweep()
@@ -204,11 +207,12 @@ def deploy():
                 client.write_register(MEASUREMENTS_READY_REG, 0)
                 logging.info("Writing results to file.")
                 write_results(sweep)
-                last_write_time = time.time()
+                break
             else:
                 logging.warning("Measurement register in an undefined state.")
         except Exception as e:
             logging.error(e)
+            time.sleep(10)
 
 
 def main():
