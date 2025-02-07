@@ -72,7 +72,7 @@ ACCELEROMETER_AVAILABLE_REG = 2100
 STATE_REG = 2101
 RESET_REG = 2102
 
-angles = [angle + 32768 for angle in [-40, -30, -20, -10, 0, 10, 20, 30, 40]]
+angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
 num_angles = 9
 num_measurements = 30
 num_sweeps = 1
