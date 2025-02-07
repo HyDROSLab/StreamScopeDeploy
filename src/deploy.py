@@ -71,9 +71,14 @@ EEPROM_ANGLES_START_REG = 2003
 ACCELEROMETER_AVAILABLE_REG = 2100
 STATE_REG = 2101
 RESET_REG = 2102
+DEBUG_REG = 2103
 
 angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
-num_angles = 9
+# Inverse cosine experiment angles
+#angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
+#angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
+
+num_angles = len(angles)
 num_measurements = 30
 num_sweeps = 1
 
@@ -170,7 +175,12 @@ def write_results(sweep):
         logging.error("Results written to file but failed to send to server.")
 
 def write_sweep_parameters():
-    client.write_register(RESET_REG, 1)
+    # If Streamscope is NOT in debug mode
+    if client.read_holding_registers(DEBUG_REG, 1).registers[0] == 0:
+        # Preemptively soft-reset the Teensy
+        client.write_register(RESET_REG, 1)
+    else:
+        logging.info("Running in DEBUG mode.")
     time.sleep(3)
     client.write_register(NUM_ANGLES_REG, num_angles)
     client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
