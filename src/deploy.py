@@ -79,24 +79,24 @@ DEBUG_REG = 5103
 # StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
 # If full sweep needs to be changed, it must be done in the firmware.
 
-num_angles = 91
-num_measurements = 30
-num_sweeps = 1
-angles = []
-full_sweep = True
+# num_angles = 91
+# num_measurements = 30
+# num_sweeps = 1
+# angles = []
+full_sweep = False
 
 # Specific Sweep Parameters
 
-# angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
+angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
 
 # Inverse cosine experiment angles
 
 # angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
 # angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
 
-# num_angles = len(angles)
-# num_measurements = 30
-# num_sweeps = 1
+num_angles = len(angles)
+num_measurements = 30
+num_sweeps = 1
 
 static_ip = '13.83.7.88'
 
