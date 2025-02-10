@@ -99,7 +99,7 @@ client.connect()
 
 def write_results(sweep):
 
-    current_time = datetime.now()
+    current_time = datetime.now(datetime.timezone.utc)
     out_folder = "/home/streamscope/StreamScopeDeploy/data"
     file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
@@ -110,7 +110,7 @@ def write_results(sweep):
             sdBuffer += "       StreamScope Sweep Log File       \n"
             sdBuffer += "----------------------------------------\n\n"
             sdBuffer += f"Date: {current_time.strftime('%d/%m/%Y')}\n"
-            sdBuffer += f"Time: {current_time.strftime('%H:%M')}\n\n"
+            sdBuffer += f"Time: {current_time.strftime('%H:%M')} UTC\n\n"
             sdBuffer += "----------------------------------------\n"
             sdBuffer += "            System Details              \n"
             sdBuffer += "----------------------------------------\n\n"
