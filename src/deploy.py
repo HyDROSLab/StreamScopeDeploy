@@ -51,7 +51,7 @@ CURR_MIN_REG = 2
 CURR_DAY_REG = 3
 CURR_MONTH_REG = 4
 CURR_YEAR_REG = 5
-SWEEP_TYPE_REG = 6
+SWEEP_TYPE_REG = 6 # General Measurement = 1, Specific Measurement = 2, Configured Measurement = 3, 4 = Full Sweep
 NUM_MEASUREMENTS_REG = 7
 NUM_ANGLES_REG = 8
 NUM_SWEEPS_REG = 9
@@ -64,23 +64,39 @@ CENTROIDS_START_REG = 103
 LEFT_BANK_START_REG = 200
 RIGHT_BANK_START_REG = 202
 RAW_RESULTS_START_REG = 300
-EEPROM_INITIALIZE_REG = 2000
-EEPROM_NUM_ANGLES_REG = 2001
-EEPROM_NUM_MEASUREMENTS_REG = 2002
-EEPROM_ANGLES_START_REG = 2003
-ACCELEROMETER_AVAILABLE_REG = 2100
-STATE_REG = 2101
-RESET_REG = 2102
-DEBUG_REG = 2103
+EEPROM_INITIALIZE_REG = 5000
+EEPROM_NUM_ANGLES_REG = 5001
+EEPROM_NUM_MEASUREMENTS_REG = 5002
+EEPROM_ANGLES_START_REG = 5003
+ACCELEROMETER_AVAILABLE_REG = 5100
+STATE_REG = 5101
+RESET_REG = 5102
+DEBUG_REG = 5103
 
-angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
-# Inverse cosine experiment angles
-#angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
-#angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
+# Full Sweep Parameters
 
-num_angles = len(angles)
+# Write to SWEEP_TYPE_REG with value 4. Don't write to NUM_ANGLES_REG, NUM_MEASUREMENTS_REG, NUM_SWEEPS_REG.
+# StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
+# If full sweep needs to be changed, it must be done in the firmware.
+
+num_angles = 91
 num_measurements = 30
 num_sweeps = 1
+angles = []
+full_sweep = True
+
+# Specific Sweep Parameters
+
+# angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
+
+# Inverse cosine experiment angles
+
+# angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
+# angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
+
+# num_angles = len(angles)
+# num_measurements = 30
+# num_sweeps = 1
 
 static_ip = '13.83.7.88'
 
@@ -94,13 +110,13 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-client = ModbusClient(port='/dev/ttyUSB0', baudrate=19200, timeout=1)
+client = ModbusClient(port='COM8', baudrate=19200, timeout=1)
 client.connect()
 
 def write_results(sweep):
 
     current_time = datetime.now()
-    out_folder = "/home/streamscope/StreamScopeDeploy/data"
+    out_folder = "C:\\Users\\braden.white\\StreamScopeDeploy\\data"
     file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
     if not os.path.isfile(file_name):
@@ -163,6 +179,7 @@ def write_results(sweep):
             files = {'file': (file_name, f, 'text/plain')}
             logging.info("Results written to file successfully.")
 
+    '''
     # Push output file to server via SFTP
     srv = pysftp.Connection(host=static_ip, username="pinpoint", password="Pinpoint2025#")
     try:
@@ -173,6 +190,7 @@ def write_results(sweep):
     except e:
         logging.error(e)
         logging.error("Results written to file but failed to send to server.")
+    '''
 
 def write_sweep_parameters():
     # If Streamscope is NOT in debug mode
@@ -182,11 +200,14 @@ def write_sweep_parameters():
     else:
         logging.info("Running in DEBUG mode.")
     time.sleep(3)
-    client.write_register(NUM_ANGLES_REG, num_angles)
-    client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
-    client.write_register(NUM_SWEEPS_REG, num_sweeps)
-    client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
-    client.write_register(SWEEP_TYPE_REG, 2)
+    if (full_sweep):
+        client.write_register(SWEEP_TYPE_REG, 4)
+    else:
+        client.write_register(NUM_ANGLES_REG, num_angles)
+        client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
+        client.write_register(NUM_SWEEPS_REG, num_sweeps)
+        client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
+        client.write_register(SWEEP_TYPE_REG, 2)
 
 def deploy():
 
