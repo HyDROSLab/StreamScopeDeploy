@@ -6,7 +6,7 @@ import glob
 import csv
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add project folder to path
 sys.path.insert(0,'/home/streamscope/StreamScopeDeploy/')
@@ -73,7 +73,8 @@ STATE_REG = 5101
 RESET_REG = 5102
 DEBUG_REG = 5103
 
-angles = [angle + 32768 for angle in [-30, -25, -20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30]]
+# Winter precip experiment
+angles = [angle + 32768 for angle in [-20, 0, 20]]
 # Inverse cosine experiment angles
 #angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
 #angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
@@ -99,7 +100,7 @@ client.connect()
 
 def write_results(sweep):
 
-    current_time = datetime.now(datetime.timezone.utc)
+    current_time = datetime.now(timezone.utc)
     out_folder = "/home/streamscope/StreamScopeDeploy/data"
     file_name = f"{out_folder}/streamscope_log_{current_time.strftime('%Y%m%d_%H%M%S')}.txt"
 
