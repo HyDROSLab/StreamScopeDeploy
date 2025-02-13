@@ -76,8 +76,16 @@ RESET_REG = 5102
 DEBUG_REG = 5103
 TEMPERATURE_REG = 5104
 
+# Write to SWEEP_TYPE_REG with value 4. Don't write to NUM_ANGLES_REG, NUM_MEASUREMENTS_REG, NUM_SWEEPS_REG.
+# StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
+# If full sweep needs to be changed, it must be done in the firmware.
+# num_angles = 91
+# num_measurements = 30
+full_sweep = False
+
 # Winter precip experiment
 angles = [angle + 32768 for angle in [-20, 0, 20]]
+
 # Inverse cosine experiment angles
 # angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]]
 # angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
@@ -202,11 +210,14 @@ def write_sweep_parameters():
     else:
         logging.info("Running in DEBUG mode.")
     time.sleep(3)
-    client.write_register(NUM_ANGLES_REG, num_angles)
-    client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
-    client.write_register(NUM_SWEEPS_REG, num_sweeps)
-    client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
-    client.write_register(SWEEP_TYPE_REG, 2)
+    if (full_sweep):
+        client.write_register(SWEEP_TYPE_REG, 4)
+    else:
+        client.write_register(NUM_ANGLES_REG, num_angles)
+        client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
+        client.write_register(NUM_SWEEPS_REG, num_sweeps)
+        client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
+        client.write_register(SWEEP_TYPE_REG, 2)
 
 def deploy():
 
