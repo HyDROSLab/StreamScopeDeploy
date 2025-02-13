@@ -72,6 +72,7 @@ ACCELEROMETER_AVAILABLE_REG = 5100
 STATE_REG = 5101
 RESET_REG = 5102
 DEBUG_REG = 5103
+TEMPERATURE_REG = 5104
 
 # Winter precip experiment
 angles = [angle + 32768 for angle in [-20, 0, 20]]
@@ -79,6 +80,7 @@ angles = [angle + 32768 for angle in [-20, 0, 20]]
 #angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
 #angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
 
+temperature = 9999
 num_angles = len(angles)
 num_measurements = 30
 num_sweeps = 1
@@ -115,7 +117,7 @@ def write_results(sweep):
             sdBuffer += "----------------------------------------\n"
             sdBuffer += "            System Details              \n"
             sdBuffer += "----------------------------------------\n\n"
-            sdBuffer += f"Accelerometer Available: {'Yes' if sweep.accelerometerAvailable == 1 else 'No'}\n\n"
+            sdBuffer += f"Internal Temperature (C): {temperature}\n\n"
             sdBuffer += "----------------------------------------\n"
             sdBuffer += "            Sweep Details               \n"
             sdBuffer += "----------------------------------------\n\n"
@@ -203,6 +205,7 @@ def deploy():
             elif client.read_holding_registers(MEASUREMENTS_READY_REG, 1).registers[0] == 1:
                 logging.info("Measurements ready. Reading in measurements.")
                 sweep = LidarSweep()
+                temperature = client.read_holding_registers(TEMPERATURE_REG, 1).registers[0] - 32768
                 sweep.sonar_distance = client.read_holding_registers(STAGE_MEASUREMENT_REG, 1).registers[0] - 32768
                 sweep.accelerometerAvailable = client.read_holding_registers(ACCELEROMETER_AVAILABLE_REG, 1).registers[0]
                 sweep.left_bank = (client.read_holding_registers(LEFT_BANK_START_REG, 1).registers[0] - 32768, client.read_holding_registers(LEFT_BANK_START_REG + 1, 1).registers[0] - 32768)
