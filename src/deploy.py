@@ -7,9 +7,10 @@ import csv
 import os
 import logging
 from datetime import datetime, timezone
+import socket
 
 # Add project folder to path
-sys.path.insert(0,'/home/streamscope/StreamScopeDeploy/')
+sys.path.insert(0, '/home/streamscope/StreamScopeDeploy/')
 
 class LidarMeasurement:
     def __init__(self):
@@ -45,6 +46,7 @@ class LidarSweep:
         self.right_bank = (0.0, 0.0)
         self.measurements.clear()
 
+
 UPDATE_TIME_REG = 0
 CURR_HOUR_REG = 1
 CURR_MIN_REG = 2
@@ -77,8 +79,8 @@ TEMPERATURE_REG = 5104
 # Winter precip experiment
 angles = [angle + 32768 for angle in [-20, 0, 20]]
 # Inverse cosine experiment angles
-#angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]] 
-#angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
+# angles = [angle + 32768 for angle in [-38, -34, -30, -26, -22, -18, -14, -10, -6, -2, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38]]
+# angles = [angle + 32768 for angle in [-40, -36, -32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40]]
 
 temperature = 9999
 num_angles = len(angles)
@@ -96,6 +98,21 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+
+def get_lock(process_name):
+    global lock_socket   # Without this our lock gets garbage collected
+    lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        lock_socket.bind('\0' + process_name)
+    except socket.error:
+        return False
+    return True
+
+
+if not get_lock("StreamScopeDeploy"):
+    logging.error("Could not aquire lock; seems like prior process is still running?")
+    sys.exit()
 
 client = ModbusClient(port='/dev/ttyUSB0', baudrate=19200, timeout=1)
 client.connect()
