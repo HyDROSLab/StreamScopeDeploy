@@ -79,7 +79,7 @@ TEMPERATURE_REG = 5104
 # Write to SWEEP_TYPE_REG with value 4. Don't write to NUM_ANGLES_REG, NUM_MEASUREMENTS_REG, NUM_SWEEPS_REG.
 # StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
 # If full sweep needs to be changed, it must be done in the firmware.
-full_sweep = True
+full_sweep = False
 num_angles = None
 num_measurements = None
 
