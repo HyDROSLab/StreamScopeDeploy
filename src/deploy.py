@@ -80,8 +80,6 @@ TEMPERATURE_REG = 5104
 # StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
 # If full sweep needs to be changed, it must be done in the firmware.
 full_sweep = False
-num_angles = None
-num_measurements = None
 
 # Winter precip experiment
 angles = [angle + 32768 for angle in [-20, 0, 20]]
@@ -209,21 +207,29 @@ def write_results(sweep):
         logging.error("Results written to file but failed to send to server.")
 
 def write_sweep_parameters():
-    # If Streamscope is NOT in debug mode
-    if client.read_holding_registers(DEBUG_REG, 1).registers[0] == 0:
-        # Preemptively soft-reset the Teensy
-        client.write_register(RESET_REG, 1)
-    else:
-        logging.info("Running in DEBUG mode.")
-    time.sleep(3)
-    if (full_sweep):
-        client.write_register(SWEEP_TYPE_REG, 4)
-    else:
-        client.write_register(NUM_ANGLES_REG, num_angles)
-        client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
-        client.write_register(NUM_SWEEPS_REG, num_sweeps)
-        client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
-        client.write_register(SWEEP_TYPE_REG, 2)
+    try:
+        if client.read_holding_registers(DEBUG_REG, 1).registers[0] == 0:
+            logging.info("Running in non-debug mode. Soft-resetting Teensy.")
+            client.write_register(RESET_REG, 1)
+        else:
+            logging.info("Running in DEBUG mode.")
+        time.sleep(3)
+        if full_sweep:
+            logging.info("Writing full sweep.")
+            client.write_register(SWEEP_TYPE_REG, 4)
+        else:
+            logging.info("Writing number of angles.")
+            client.write_register(NUM_ANGLES_REG, num_angles)
+            logging.info("Writing number of measurements.")
+            client.write_register(NUM_MEASUREMENTS_REG, num_measurements)
+            logging.info("Writing number of sweeps.")
+            client.write_register(NUM_SWEEPS_REG, num_sweeps)
+            logging.info("Writing specific angles.")
+            client.write_registers(SPECIFIC_ANGLES_START_REG, angles)
+            logging.info("Writing sweep type.")
+            client.write_register(SWEEP_TYPE_REG, 2)
+    except Exception as e:
+        logging.error(f"Error writing sweep parameters: {e}")
 
 def deploy():
 

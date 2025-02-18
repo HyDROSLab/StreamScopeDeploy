@@ -57,7 +57,7 @@ def read_log_file(file_path, requested_angles, tolerance=1):
 
     timestamps = []
     data = {angle: [] for angle in requested_angles}
-    sonar_distance = None
+    sonar_distances = []
     
     with open(file_path, "r") as file:
         lines = file.readlines()
@@ -93,8 +93,9 @@ def read_log_file(file_path, requested_angles, tolerance=1):
             sonar_distance = int(line.split(":")[-1].strip())
             if sonar_distance > 2500 or sonar_distance < 0:
                 sonar_distance = None
+            sonar_distances.append(sonar_distance)
                         
-    return timestamps, data, sonar_distance
+    return timestamps, data, sonar_distances
 
 def plot_graphs(data_all, timestamps_all, sonar_distances):
     """
@@ -112,25 +113,28 @@ def plot_graphs(data_all, timestamps_all, sonar_distances):
 
     plt.figure(figsize=(10, 6))
     
-    for angle in [-20, 20]:
+    '''
+    for angle in [0]:
         data_for_angle = data_all[angle]
         
         while len(data_for_angle) < len(timestamps_all):
             data_for_angle.append(None)
         
         plt.plot(timestamps_all, data_for_angle, label=f"Angle {angle}°")
+    '''
 
     while len(sonar_distances) < len(timestamps_all):
         sonar_distances.append(None)
     
-    # plt.plot(timestamps_all, sonar_distances, label="Sonar Distance", linestyle="-", color="black")
-    plt.axhline(y=1845, color="red", linestyle="--", label="Initial Distance")
+    plt.plot(timestamps_all, sonar_distances, label="Sonar Distance", linestyle="-", color="black")
+    plt.axhline(y=1722, color="red", linestyle="--", label="Initial Distance")
     
     plt.xlabel("Time (UTC)")
     plt.ylabel("Average Distance")
     plt.title("StreamScope: Average Distance vs. Time")
     plt.legend()
     plt.xticks(rotation=45)
+    plt.ylim(1716, 1734)
     plt.gca().invert_yaxis()
     plt.gca().xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%d/%m/%Y %H:%M'))
     plt.gca().xaxis.set_major_locator(plt.matplotlib.dates.MinuteLocator(interval=30))
@@ -158,12 +162,12 @@ if __name__ == "__main__":
         
             for file_name in log_files:
                 file_path = os.path.join("data", file_name)
-                timestamps, data, sonar_distance = read_log_file(file_path, requested_angles)
+                timestamps, data, sonar_distances = read_log_file(file_path, requested_angles)
 
                 for angle in data:
                     data_all[angle].extend(data[angle])
                 timestamps_all.extend(timestamps)
-                sonar_distances_all.extend(sonar_distance)
+                sonar_distances_all.extend(sonar_distances)
 
             plot_graphs(data_all, timestamps_all, sonar_distances_all)
         elif choice == '2':
