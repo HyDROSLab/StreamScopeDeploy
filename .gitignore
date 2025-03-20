@@ -3,3 +3,5 @@ venv
 logs/*.log
 # Ignore the measurements files
 data/streamscope_log_*.txt
+# Ignore .venv directory
+.venv
