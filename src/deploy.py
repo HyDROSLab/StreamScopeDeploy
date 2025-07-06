@@ -77,7 +77,7 @@ EEPROM_ANGLES_START_REG = 4003
 # Write to SWEEP_TYPE_REG with value 4. Don't write to NUM_ANGLES_REG, NUM_MEASUREMENTS_REG, NUM_SWEEPS_REG.
 # StreamScope will use it's internal values for these parameters. The variables below are for reading back data.
 # If full sweep needs to be changed, it must be done in the firmware.
-full_sweep = True
+full_sweep = False
 
 # Winter precip experiment
 angles = [angle + 32768 for angle in [-20, 0, 20]]
@@ -149,11 +149,14 @@ def write_results(sweep):
             sdBuffer += "----------------------------------------\n\n"
             sdBuffer += f"Number of Angles: {num_angles}\n"
             sdBuffer += f"Number of Measurements at Each Angle: {num_measurements}\n"
-            sdBuffer += "Requested Angles (degrees): Full Sweep"
-            # for i in range(num_angles):
-                # sdBuffer += str(angles[i] - 32768)
-                # if i != num_angles - 1:
-                    # sdBuffer += ", "
+            sdBuffer += "Requested Angles (degrees): "
+            if full_sweep:
+                sdBuffer += "Full Sweep (default angles)\n"
+            else:
+                for i in range(num_angles):
+                    sdBuffer += str(angles[i] - 32768)
+                    if i != num_angles - 1:
+                        sdBuffer += ", "
             sdBuffer += "\n\n"
             sdBuffer += "----------------------------------------\n"
             sdBuffer += "         General Sweep Results          \n"
@@ -260,6 +263,7 @@ def deploy():
 
 
 def main():
+
     deploy()
 
 if __name__ == "__main__":
