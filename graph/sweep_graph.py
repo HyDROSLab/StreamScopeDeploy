@@ -1,30 +1,22 @@
 """
-StreamScope Cross-Section Analysis
+StreamScope Cross-Section Analysis Script
 
-Processes StreamScope LIDAR sweep data to analyze stream cross-sections.
-
-Main features:
-- Reads measurement logs and parses sweeps, angles, and distances.
-- Computes (x, y) coordinates for all points, accounting for water refraction.
-- Uses kernel density estimation (KDE) to find centroids for each angle.
-- Identifies stream banks based on centroid and water detection logic.
-- Calculates cross-sectional area using detected banks and centroids.
-- Visualizes raw points, centroids, banks, and overlays manual survey data.
-- Outputs summary statistics and saves plots to disk.
+This script processes data from StreamScope sweeps to analyze stream cross-sections.
+It reads measurement logs, computes coordinates for points, removes outliers, clusters points to find centroids,
+identifies stream banks, and visualizes the cross-section using matplotlib.
 
 Classes:
-    LidarPoint: 2D point with distance and uncertainty info.
-    LidarMeasurement: All measurements for a single angle.
-    LidarSweep: Full sweep of measurements at a timestamp.
+    LidarPoint: Represents a single coordinate point in 2D space.
+    LidarMeasurement: Holds all measurements for a single angle sweep.
+    LidarSweep: Represents a full sweep of laser measurements at a given timestamp.
 
-Key functions:
-    calculate_coordinates(sweeps): Compute coordinates for all points.
-    kde_centroids_by_angle(sweep): Find centroids using KDE for each angle.
-    process_kde_centroids(sweep): Prune/validate centroids after KDE.
-    find_banks(sweep): Detect left/right banks from centroids and water status.
-    calculate_cross_sectional_area(sweep): Compute area between banks and centroids.
-    graph(sweeps): Visualize all processed data and overlays.
-    execute(folder): Main pipeline for reading, processing, and visualizing data.
+Functions:
+    calculate_coordinates(sweeps): Computes (x, y) coordinates for all measurements, accounting for refraction.
+    remove_outliers(sweep, eps=50, min_samples=3): Removes outlier points from measurements using DBSCAN clustering.
+    process_centroids(sweep): Clusters inlier points to find centroids for each angle.
+    find_banks(sweep): Identifies the left and right stream banks based on centroids and water detection.
+    graph(sweeps): Visualizes the processed data, including raw points, centroids, and banks.
+    execute(): Main data processing and visualization pipeline.
 """
 
 import os
@@ -35,25 +27,14 @@ import glob
 import math
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
+import csv
+from sklearn.metrics import pairwise_distances
+from matplotlib.lines import Line2D
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from sklearn.neighbors import KernelDensity
+from scipy.signal import find_peaks
 from scipy.ndimage import maximum_filter, label, find_objects
 import os
-import logging
-
-# Dynamically determine the project root (assume this script is in .../graph/)
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
-# Logging directory and file
-log_dir = os.path.join(PROJECT_ROOT, 'logs')
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, 'graph.log')
-logging.basicConfig(
-    filename=log_file,
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 
 class LidarPoint:
 
@@ -91,7 +72,7 @@ class LidarPoint:
         return False
 
     def __hash__(self):
-        return hash((round(self.x, 5), round(self.y, 6)))
+        return hash((round(self.x, 6), round(self.y, 6)))
 
 class LidarMeasurement:
 
@@ -352,6 +333,23 @@ def kde_centroids_by_angle(sweep, bandwidth=50):
                 break
         meas.uncertain_centroid = uncertain_centroid
 
+        # --- Plot for this measurement ---
+        # plt.figure(figsize=(6, 6))
+        # plt.scatter(coords[:, 0], coords[:, 1], s=10, color='black', alpha=0.5, label='Raw Points')
+        # plt.contourf(xx, yy, np.exp(log_density_2d), levels=20, cmap='Blues', alpha=0.5)
+        # plt.scatter([x_certain], [y_certain], color='green', marker='X', s=100, label='Certain Centroid')
+        # if uncertain_centroid is not None:
+            # plt.scatter([uncertain_centroid.x], [uncertain_centroid.y], color='orange', marker='P', s=100, label='Uncertain Centroid')
+        # plt.title(f"Angle {meas.angle}° KDE & Centroids")
+        # plt.xlabel("X (mm)")
+        # plt.ylabel("Y (mm)")
+        # plt.legend()
+        # plt.grid(True)
+        # plt.tight_layout()
+        # plt.show()
+        # Wait for user to close the plot before continuing
+        # plt.close()
+
 def process_kde_centroids(sweep):
     """
     Prunes certain centroids if they are shorter than the sonar distance and between the left and right banks,
@@ -396,17 +394,16 @@ def process_kde_centroids(sweep):
             ]
             if all_cc_y:
                 avg_dist_to_sonar = np.mean([abs(abs(y) - sonar_dist) for y in all_cc_y])
-                threshold = max(50, min(400, avg_dist_to_sonar))  # Clamp between 50 and 400 mm
+                threshold = max(0, min(400, avg_dist_to_sonar))  # Clamp between 50 and 400 mm
             else:
                 threshold = 200  # Fallback default
 
-            if abs(abs(cc.y) - sonar_dist) <= threshold and abs(meas.angle) <= 15:
-                meas.certain_centroid = None
+            # if abs(abs(cc.y) - sonar_dist) <= threshold and abs(meas.angle) <= 15:
+                # meas.certain_centroid = None
             
 
 
 def calculate_coordinates(sweeps):
-
     """
     Computes (x, y) coordinates for all laser measurements in the provided sweeps,
     accounting for refraction at the water surface.
@@ -419,14 +416,21 @@ def calculate_coordinates(sweeps):
     n2 = 1.33
 
     for sweep in sweeps:
-        pass
+        # Find a valid sonar distance for fallback
+        valid_sonar = None
         for meas in sweep.measurements:
+            if hasattr(meas, "sonar_distance") and 500 < meas.sonar_distance < 9000:
+                valid_sonar = meas.sonar_distance
+                break
+        for meas in sweep.measurements:
+            # Use valid sonar distance if current is invalid
             water_level = meas.sonar_distance
+            if not (500 < water_level < 9000):
+                water_level = valid_sonar if valid_sonar is not None else 0
             rad_angle = math.radians(meas.angle)
             for i, dist in enumerate(meas.distances):
-                if 500 < dist < 5000:
-
-                    da = water_level / math.cos(rad_angle)
+                if not (9000 <= dist <= 10000) and water_level > 0:
+                    da = water_level / math.cos(rad_angle) if water_level else 0
                     db = dist - da
 
                     if db <= 0:
@@ -442,89 +446,168 @@ def calculate_coordinates(sweeps):
                         point = LidarPoint(-1 * (xa + xb), -1 * (water_level + yb))
                         meas.raw_points.append(point)
                         meas.in_water = True
+                elif 500 < dist < 15000 and not (9000 <= dist <= 10000) and water_level <= 0:
+                    xa = math.sin(rad_angle) * dist
+                    ya = math.cos(rad_angle) * dist
+                    point = LidarPoint(-1 * xa, -1 * ya)
+                    meas.raw_points.append(point)
 
-def find_banks(sweep):
+def remove_outliers(sweep, eps=50, min_samples=3):
 
     """
-    Identifies the left and right stream banks based on centroids and water detection.
+    Removes outlier points from each measurement in the sweep using DBSCAN clustering.
+
+    Args:
+        sweep (LidarSweep): The sweep to process.
+        eps (float): DBSCAN epsilon parameter.
+        min_samples (int): Minimum samples for DBSCAN.
+    """
+
+    for measurement in sweep.measurements:
+        if len(measurement.raw_points) < 2:
+            continue
+
+        coords = np.array([point.as_tuple() for point in measurement.raw_points])
+        dbscan = DBSCAN(eps=eps, min_samples=min_samples).fit(coords)
+        labels = dbscan.labels_
+
+        unique_labels = set(labels)
+        if -1 in unique_labels:
+            unique_labels.remove(-1)
+
+        if len(unique_labels) == 0:
+            continue
+
+        largest_cluster_label = max(unique_labels, key=list(labels).count)
+        inlier_tuples = [coords[i] for i in range(len(labels)) if labels[i] == largest_cluster_label]
+        outlier_tuples = [coords[i] for i in range(len(labels)) if labels[i] == -1]
+        measurement.inliers = [LidarPoint(x, y) for x, y in inlier_tuples]
+        measurement.outliers = [LidarPoint(x, y) for x, y in outlier_tuples]
+
+def process_centroids(sweep):
+    """
+    Clusters inlier points for each measurement to find certain and uncertain centroids.
 
     Args:
         sweep (LidarSweep): The sweep to process.
     """
 
-    sorted_measurements = sorted(sweep.measurements, key=lambda m: m.angle)
-    n = len(sorted_measurements)
+    angle_to_points = {meas.angle: list(meas.raw_points) for meas in sweep.measurements}
 
-    def is_underwater(meas):
-        return meas.in_water
+    missing_centroids = []
 
-    left_bank = None
-    left_angle = None
-    for idx, meas in enumerate(sorted_measurements):
-        if is_underwater(meas):
-            prev_idx = idx - 1
-            if prev_idx >= 0:
-                prev_meas = sorted_measurements[prev_idx]
-                if hasattr(prev_meas, "certain_centroid") and prev_meas.certain_centroid is not None:
-                    left_bank = prev_meas.certain_centroid
-                    left_angle = prev_meas.angle
-                elif hasattr(prev_meas, "uncertain_centroid") and prev_meas.uncertain_centroid is not None:
-                    left_bank = prev_meas.uncertain_centroid
-                    left_angle = prev_meas.angle
-                else:
-                    left_bank = meas.certain_centroid if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None else meas.uncertain_centroid
-                    left_angle = meas.angle
+    for meas in sweep.measurements:
+        sonar_dist = getattr(meas, "sonar_distance", 0)
+        if hasattr(meas, "inliers"):
+            if meas.in_water:
+                meas.inliers = [pt for pt in meas.inliers if meas.in_water]
+            elif any(m.in_water and m.angle == meas.angle for m in sweep.measurements):
+                meas.inliers = []
+
+        if hasattr(meas, "inliers") and len(meas.inliers) >= 10:
+            coords = np.array([pt.as_tuple() for pt in meas.inliers])
+            k = min(3, len(coords))
+            kmeans = KMeans(n_clusters=k, n_init=10, random_state=0).fit(coords)
+            centroids = kmeans.cluster_centers_
+            labels = kmeans.labels_
+
+            # Convert centroids to LidarPoint objects
+            centroid_points = [LidarPoint(c[0], c[1]) for c in centroids]
+
+            # Find the centroid with the highest density (most points assigned)
+            label_counts = np.bincount(labels)
+            densest_idx = np.argmax(label_counts)
+            certain_centroid = centroid_points[densest_idx]
+
+            # For uncertain centroid, pick the farthest centroid from origin (or sonar_dist)
+            farthest_idx = np.argmax([abs(pt.y) for pt in centroid_points])
+            uncertain_candidate = centroid_points[farthest_idx]
+            if abs(uncertain_candidate.y - 50) > sonar_dist:
+                uncertain_centroid = uncertain_candidate
             else:
-                left_bank = meas.certain_centroid if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None else meas.uncertain_centroid
-                left_angle = meas.angle
-            break
+                uncertain_centroid = None
 
-    right_bank = None
-    right_angle = None
-    n = len(sorted_measurements)
-    found_underwater = False
-    underwater_angle = None
-    underwater_centroid = None
+            meas.certain_centroid = certain_centroid
+            meas.uncertain_centroid = uncertain_centroid
 
-    for idx in reversed(range(n)):
-        meas = sorted_measurements[idx]
-        if not found_underwater:
-            if is_underwater(meas):
-                found_underwater = True
-                underwater_angle = meas.angle
-                underwater_centroid = meas.certain_centroid if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None else meas.uncertain_centroid
-    
-    for idx in reversed(range(n)):
-        meas = sorted_measurements[idx]
-        if underwater_angle is not None and meas.angle > underwater_angle:
-            candidate_centroid = None
-            if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None:
-                candidate_centroid = meas.certain_centroid
-            elif hasattr(meas, "uncertain_centroid") and meas.uncertain_centroid is not None:
-                candidate_centroid = meas.uncertain_centroid
-            closest_candidate = None
-            closest_angle = None
-            min_dist = float('inf')
-            for idx2 in reversed(range(n)):
-                meas2 = sorted_measurements[idx2]
-                if meas2.angle > underwater_angle:
-                    cand_centroid = None
-                    if hasattr(meas2, "certain_centroid") and meas2.certain_centroid is not None:
-                        cand_centroid = meas2.certain_centroid
-                    elif hasattr(meas2, "uncertain_centroid") and meas2.uncertain_centroid is not None:
-                        cand_centroid = meas2.uncertain_centroid
-                    if cand_centroid and underwater_centroid and abs(cand_centroid.x) > abs(underwater_centroid.x):
-                        dist = abs(cand_centroid.x - underwater_centroid.x)
-                        if dist < min_dist:
-                            min_dist = dist
-                            closest_candidate = cand_centroid
-                            closest_angle = meas2.angle
-            if closest_candidate:
-                right_bank = closest_candidate
-                right_angle = closest_angle
+            # If only one centroid, fallback to farthest inlier or raw point for uncertain
+            if len(centroid_points) == 1:
+                farthest_pt = max(
+                    (pt for pt in meas.inliers if abs(pt.y - 50) > sonar_dist),
+                    key=lambda pt: abs(pt.y),
+                    default=None
+                )
+                if farthest_pt:
+                    meas.uncertain_centroid = farthest_pt
+                else:
+                    farthest_pt = max((pt for pt in meas.raw_points if abs(pt.y - 50) > sonar_dist), key=lambda pt: abs(pt.y), default=None)
+                    meas.uncertain_centroid = farthest_pt if farthest_pt else None
+        else:
+            farthest_pt = max(
+                (pt for pt in meas.raw_points if abs(pt.y - 50) > sonar_dist),
+                key=lambda pt: abs(pt.y),
+                default=None
+            )
+            meas.uncertain_centroid = farthest_pt if farthest_pt else None
+            meas.certain_centroid = None
 
-    sweep.left_bank = left_bank
-    sweep.right_bank = right_bank
+        # Ensure uncertain centroid does not exist at y values greater than sonar distance
+        if meas.uncertain_centroid is not None and abs(meas.uncertain_centroid.y) <= sonar_dist:
+            meas.uncertain_centroid = None
+
+        if meas.certain_centroid is None or meas.uncertain_centroid is None:
+            missing_centroids.append(meas.angle)
+
+    if missing_centroids:
+        for meas in sweep.measurements:
+            sonar_dist = getattr(meas, "sonar_distance", 0)
+            if meas.angle in missing_centroids and meas.raw_points:
+                furthest_raw = max(
+                    (pt for pt in meas.raw_points if abs(pt.y - 50) > sonar_dist),
+                    key=lambda pt: abs(pt.y),
+                    default=None
+                )
+                if furthest_raw and abs(furthest_raw.y - 50) > sonar_dist:
+                    meas.uncertain_centroid = furthest_raw
+                    meas.certain_centroid = None
+                else:
+                    meas.uncertain_centroid = None
+                    meas.certain_centroid = None
+
+def find_banks(sweep):
+
+    # Find left and right bank x-coordinates based on sonar distance
+
+    sorted_measurements = sorted(sweep.measurements, key=lambda m: m.angle)
+
+    left_bank_x = None
+    right_bank_x = None
+
+    sonar_dist = sweep.sonar_distances[0] if hasattr(sweep, "sonar_distances") and sweep.sonar_distances else None
+    if sonar_dist is None:
+        sweep.left_bank = None
+        sweep.right_bank = None
+    else:
+        # Find left bank: minimum angle with a centroid whose y is close to sonar distance
+        for m in sorted_measurements:
+            cc = getattr(m, "certain_centroid", None)
+            uc = getattr(m, "uncertain_centroid", None)
+            pt = cc if cc is not None else uc
+            if pt is not None and abs(abs(pt.y) - abs(sonar_dist)) < 100:
+                left_bank_x = pt.x
+                break
+
+        # Find right bank: maximum angle with a centroid whose y is close to sonar distance
+        for m in reversed(sorted_measurements):
+            cc = getattr(m, "certain_centroid", None)
+            uc = getattr(m, "uncertain_centroid", None)
+            pt = cc if cc is not None else uc
+            if pt is not None and abs(abs(pt.y) - abs(sonar_dist)) < 100:
+                right_bank_x = pt.x
+                break
+
+        sweep.left_bank = LidarPoint(left_bank_x, sonar_dist) if left_bank_x is not None else None
+        sweep.right_bank = LidarPoint(right_bank_x, sonar_dist) if right_bank_x is not None else None
 
     for meas in sweep.measurements:
         if meas.uncertain_centroid is not None:
@@ -578,64 +661,93 @@ def find_banks(sweep):
 def graph(sweeps):
     """
     Visualizes the processed data, including raw points, centroids, banks, and overlays USGS cross-section data.
-    Plots each data type separately and all together, saving each plot to the appropriate folder.
-    Graph filenames are prefixed with the date for clarity.
+
+    Args:
+        sweeps (list): List of LidarSweep objects to visualize.
     """
 
-    # Helper to get date folder and time range from sweeps
-    def get_date_and_times(sweeps):
-        for sweep in sweeps:
-            timestamps = getattr(sweep, "timestamps", [])
-            if timestamps:
-                date_str = timestamps[0].strftime("%m/%d/%Y")
-                start_time = timestamps[0].strftime("%H:%M")
-                end_time = timestamps[-1].strftime("%H:%M")
-                return date_str, start_time, end_time
-        return "unknown_date", "", ""
-    
-    prefix = datetime.datetime.now().strftime("%m%d%Y")
-    date_dir = os.path.join(PROJECT_ROOT, "data", prefix, "graphs")
-    os.makedirs(date_dir, exist_ok=True)
+    plt.figure(figsize=(8, 8))
 
-    date_str, start_time, end_time = get_date_and_times(sweeps)
-    title_prefix = f"StreamScope Cross-Section ({date_str}, {start_time}-{end_time} UTC)"
+    mm_to_ft = 1 / 304.8
 
-    # Prepare data
-    raw_x, raw_y = [], []
-    centroid_x, centroid_y = [], []
-    uncertain_centroid_x, uncertain_centroid_y = [], []
-    angle_centroid_pairs = []
-    angle_uncertain_pairs = []
+    raw_x = []
+    raw_y = []
+    centroid_x = []
+    centroid_y = []
+    uncertain_centroid_x = []
+    uncertain_centroid_y = []
 
     for sweep in sweeps:
         for measurement in sweep.measurements:
             for point in getattr(measurement, "raw_points", []):
-                raw_x.append(-point.x)
-                raw_y.append(-point.y)
+                raw_x.append(point.x * mm_to_ft)
+                raw_y.append(-point.y * mm_to_ft)
             if hasattr(measurement, "certain_centroid") and measurement.certain_centroid is not None:
-                centroid_x.append(-measurement.certain_centroid.x)
-                centroid_y.append(-measurement.certain_centroid.y)
-                angle_centroid_pairs.append((measurement.angle, measurement.certain_centroid))
+                centroid_x.append(measurement.certain_centroid.x * mm_to_ft)
+                centroid_y.append(-measurement.certain_centroid.y * mm_to_ft)
             if hasattr(measurement, "uncertain_centroid") and measurement.uncertain_centroid is not None:
-                uncertain_centroid_x.append(-measurement.uncertain_centroid.x)
-                uncertain_centroid_y.append(-measurement.uncertain_centroid.y)
-                angle_uncertain_pairs.append((measurement.angle, measurement.uncertain_centroid))
+                uncertain_centroid_x.append(measurement.uncertain_centroid.x * mm_to_ft)
+                uncertain_centroid_y.append(-measurement.uncertain_centroid.y * mm_to_ft)
 
-    # Banks
-    sweep = sweeps[0]
     left_bank = getattr(sweep, "left_bank", None)
     right_bank = getattr(sweep, "right_bank", None)
-    left_bank_plot_x = -left_bank.x if left_bank is not None else None
-    right_bank_plot_x = -right_bank.x if right_bank is not None else None
 
-    # Sonar distances
+    left_bank_plot_x = left_bank.x * mm_to_ft if left_bank else None
+    right_bank_plot_x = right_bank.x * mm_to_ft if right_bank else None
+
+    # Only plot bank lines if both left and right bank x values are available
+    if left_bank_plot_x is not None and right_bank_plot_x is not None:
+        pass
+        # plt.axvline(x=right_bank_plot_x, color='purple', linestyle='-.', linewidth=2, label="Left Bank")
+        # plt.axvline(x=left_bank_plot_x, color='brown', linestyle='-.', linewidth=2, label="Right Bank")
+
     sonar_distances = [d for sweep in sweeps if hasattr(sweep, "sonar_distances") for d in sweep.sonar_distances]
-    min_sonar = min(sonar_distances) if sonar_distances else None
-    max_sonar = max(sonar_distances) if sonar_distances else None
+    if sonar_distances:
+        min_sonar = min(sonar_distances) * mm_to_ft
+        max_sonar = max(sonar_distances) * mm_to_ft
+        plt.axhspan(max_sonar, min_sonar, color='red', alpha=0.50, label="Sonar Distance Range")
 
-    # Manual survey overlay
+    if raw_x and raw_y:
+        plt.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
+
+    # Plot certain centroids as scatter
+    if centroid_x and centroid_y:
+        pass
+        # plt.scatter(centroid_x, centroid_y, s=80, color='green', marker='X', label="Certain Centroids", zorder=90, edgecolors='black', linewidths=1.2)
+
+    # Plot contour for certain centroids (sorted by angle)
+    angle_centroid_pairs = []
+    for sweep in sweeps:
+        for measurement in sweep.measurements:
+            if (
+                hasattr(measurement, "certain_centroid")
+                and measurement.certain_centroid is not None
+            ):
+                angle_centroid_pairs.append((measurement.angle, measurement.certain_centroid))
+    angle_centroid_pairs.sort(key=lambda x: x[0])
+    if angle_centroid_pairs:
+        cx = [(c.x * mm_to_ft) for _, c in angle_centroid_pairs]
+        cy = [-(c.y * mm_to_ft) for _, c in angle_centroid_pairs]
+        # plt.plot(cx, cy, color='lime', linewidth=2, zorder=1, label="Certain Centroids Contour")
+
+    # Plot uncertain centroids as scatter (optional, uncomment if needed)
+    if uncertain_centroid_x and uncertain_centroid_y:
+        pass
+        # plt.scatter(uncertain_centroid_x, uncertain_centroid_y, color='orange', marker='X', s=50, edgecolors='black', label="Uncertain Centroids")
+
+    # Plot the area polygon, ensuring correct order and sign
+    # avg_x = [x * mm_to_ft for x in sweep.area_polygons["avg"][0]]
+    # avg_y = [y * mm_to_ft for y in sweep.area_polygons["avg"][1]]
+    # if len(avg_x) == len(avg_y) and len(avg_x) > 0:
+        # poly_points = list(zip(avg_x, avg_y))
+        # poly_points_sorted = sorted(poly_points, key=lambda p: p[0])
+        # poly_x_sorted = [x for x, y in poly_points_sorted]
+        # poly_y_sorted = [-y for x, y in poly_points_sorted]
+        # plt.fill(poly_x_sorted, poly_y_sorted, color='green', alpha=0.3, label=f"Avg Area ({sweep.area:.1f} m²)")
+
+    # --- Overlay Falls_Creek_Manual_Survey CSV ---
+
     csv_path = os.path.join(os.path.dirname(__file__), "Falls_Creek_Manual_Survey.csv")
-    manual_xs, manual_ys = None, None
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path)
         df.columns = [c.strip().rstrip(',') for c in df.columns]
@@ -643,8 +755,10 @@ def graph(sweeps):
         df = df[pd.to_numeric(df["Height"], errors="coerce").notnull()]
         xs = df["Horizontal Distance"].astype(float).values
         ys = df["Height"].astype(float).values
+
         xs_mm = xs * 304.8
         ys_mm = ys * 304.8
+
         first_in_water_idx = None
         last_in_water_idx = None
         if "Description" in df.columns:
@@ -657,123 +771,103 @@ def graph(sweeps):
             first_in_water_idx = 0
         if last_in_water_idx is None:
             last_in_water_idx = len(xs_mm) - 1
+
         mid_idx = (first_in_water_idx + last_in_water_idx) // 2
         x0 = xs_mm[mid_idx]
         y0 = ys_mm[mid_idx]
-        manual_xs = xs_mm - x0 - 1010
-        manual_ys = ys_mm - y0 + 3025
-        sorted_indices = np.argsort(manual_xs)
-        manual_xs = manual_xs[sorted_indices]
-        manual_ys = manual_ys[sorted_indices]
 
-    # Helper for consistent plot
-    def plot_base(ax, subtitle):
-        if left_bank_plot_x is not None:
-            ax.axvline(x=left_bank_plot_x, color='brown', linestyle='-.', linewidth=2, label="Left Bank")
-        if right_bank_plot_x is not None:
-            ax.axvline(x=right_bank_plot_x, color='purple', linestyle='-.', linewidth=2, label="Right Bank")
-        if min_sonar is not None and max_sonar is not None:
-            ax.axhspan(max_sonar, min_sonar, color='red', alpha=0.15, label="Sonar Distance Range")
-        ax.set_xlabel("X (mm)")
-        ax.set_ylabel("Y (mm)")
-        ax.set_xlim(-5000, 5000)
-        ax.set_ylim(10000, 0)
-        ax.set_aspect('equal', adjustable='box')
-        ax.grid(True)
-        ax.set_title(f"{title_prefix}\n{subtitle}")
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        ax.legend(by_label.values(), by_label.keys(), loc='lower left')
+        xs_centered = (xs_mm - x0 - 1010) * mm_to_ft
+        ys_centered = (ys_mm - y0 + 3025) * mm_to_ft
 
+        # plt.scatter(-xs_centered, ys_centered, color='blue', s=80, marker='X', edgecolors='black', linewidths=1.2, label="Manual Survey Points", zorder=50)
 
+        sorted_indices = np.argsort(xs_centered)
+        # plt.plot(-xs_centered[sorted_indices], ys_centered[sorted_indices], color='blue', linewidth=2, label="Manual Survey Contour", zorder=51)
+    else:
+        print(f"Manual survey CSV not found at {csv_path}")
 
-    # Plot raw points
-    fig, ax = plt.subplots(figsize=(8, 8))
-    if raw_x and raw_y:
-        ax.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
-    plot_base(ax, "Raw Points Only")
+    # Determine date and time range from sweeps
+    timestamps = getattr(sweep, "timestamps", [])
+    if timestamps:
+        timestamps = sorted(timestamps)
+        date_str = timestamps[0].strftime("%Y-%m-%d")
+        start_time = timestamps[0].strftime("%H:%M")
+        end_time = timestamps[-1].strftime("%H:%M")
+        plt.title(f"StreamScope Cross-Section - Plum Creek ({date_str}, {start_time}–{end_time} UTC)")
+    else:
+        plt.title("StreamScope Cross-Section")
+    plt.xlabel("X (ft)")
+    plt.ylabel("Y (ft)")
+
+    # plt.xlim(-20, 20) # Sapello XLIM
+    # plt.ylim(20, 0) # Sapello YLIM
+    plt.xlim(-25, 25)
+    plt.ylim(30, 0)
+    plt.xticks(np.arange(-25, 26, 0.50))
+    plt.yticks(np.arange(0, 31, 0.50))
+    plt.xticks(rotation=45)
+    plt.grid(True)
     plt.tight_layout()
-    plt.savefig(os.path.join(date_dir, f"{prefix}raw_points.png"))
-    plt.close(fig)
+    # plt.gca().set_aspect('equal', adjustable='box')
+    main_legend = plt.legend(loc='lower left')
+    plt.gca().add_artist(main_legend)
 
-    # Plot certain centroids (always include raw points)
-    fig, ax = plt.subplots(figsize=(8, 8))
-    if raw_x and raw_y:
-        ax.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
-    if centroid_x and centroid_y:
-        ax.scatter(centroid_x, centroid_y, s=80, color='green', marker='X', label="Certain Centroids", zorder=90, edgecolors='black', linewidths=1.2)
-    if angle_centroid_pairs:
-        angle_centroid_pairs.sort(key=lambda x: x[0])
-        cx = [(c.x) for _, c in angle_centroid_pairs]
-        cy = [-(c.y) for _, c in angle_centroid_pairs]
-        ax.plot(cx, cy, color='lime', linewidth=2, zorder=1, label="Certain Centroids Contour")
-    plot_base(ax, "Certain Centroids + Raw Points")
-    plt.tight_layout()
-    plt.savefig(os.path.join(date_dir, f"{prefix}certain_centroids.png"))
-    plt.close(fig)
+    # Error, Valid, and Timeout Inset Plot
+    total_points = 0
+    valid_points = 0
+    error_points = 0
+    timeout_points = 0
+    for sweep in sweeps:
+        for measurement in sweep.measurements:
+            for d in getattr(measurement, "distances", []):
+                total_points += 1
+                if d == 9999:
+                    timeout_points += 1
+                elif d > 9990:
+                    error_points += 1
+                else:
+                    valid_points += 1
 
-    # Plot uncertain centroids (always include raw points, add contour)
-    fig, ax = plt.subplots(figsize=(8, 8))
-    if raw_x and raw_y:
-        ax.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
-    if uncertain_centroid_x and uncertain_centroid_y:
-        ax.scatter(uncertain_centroid_x, uncertain_centroid_y, color='orange', marker='X', s=50, edgecolors='black', label="Uncertain Centroids")
-    if angle_uncertain_pairs:
-        angle_uncertain_pairs.sort(key=lambda x: x[0])
-        ucx = [(c.x) for _, c in angle_uncertain_pairs]
-        ucy = [-(c.y) for _, c in angle_uncertain_pairs]
-        ax.plot(ucx, ucy, color='orange', linewidth=2, linestyle='--', zorder=1, label="Uncertain Centroids Contour")
-    plot_base(ax, "Uncertain Centroids + Raw Points")
-    plt.tight_layout()
-    plt.savefig(os.path.join(date_dir, f"{prefix}uncertain_centroids.png"))
-    plt.close(fig)
+    if total_points > 0:
+        valid_pct = valid_points / total_points * 100
+        error_pct = error_points / total_points * 100
+        timeout_pct = timeout_points / total_points * 100
+    else:
+        valid_pct = error_pct = timeout_pct = 0
 
-    # Plot manual survey if available (always include raw points)
-    if manual_xs is not None and manual_ys is not None:
-        fig, ax = plt.subplots(figsize=(8, 8))
-        if raw_x and raw_y:
-            ax.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
-        ax.plot(-manual_xs, manual_ys, color='blue', linewidth=2, label="Manual Survey Contour", zorder=51)
-        ax.scatter(-manual_xs, manual_ys, color='blue', s=80, marker='X', edgecolors='black', linewidths=1.2, label="Manual Survey Points", zorder=50)
-        plot_base(ax, "Manual Survey + Raw Points")
-        plt.tight_layout()
-        plt.savefig(os.path.join(date_dir, f"{prefix}manual_survey.png"))
-        plt.close(fig)
+    sizes = [valid_pct, error_pct, timeout_pct]
+    counts = [valid_points, error_points, timeout_points]
+    labels = ['Valid', 'Error', 'Timeout']
+    colors = ['#4CAF50', '#FF9800', '#F44336']
 
-    # Plot all together
-    fig, ax = plt.subplots(figsize=(8, 8))
-    if raw_x and raw_y:
-        ax.scatter(raw_x, raw_y, s=8, color='black', alpha=0.2, label="Raw Points")
-    if centroid_x and centroid_y:
-        ax.scatter(centroid_x, centroid_y, s=80, color='green', marker='X', label="Certain Centroids", zorder=90, edgecolors='black', linewidths=1.2)
-    if angle_centroid_pairs:
-        angle_centroid_pairs.sort(key=lambda x: x[0])
-        cx = [(c.x) for _, c in angle_centroid_pairs]
-        cy = [-(c.y) for _, c in angle_centroid_pairs]
-        ax.plot(cx, cy, color='lime', linewidth=2, zorder=1, label="Certain Centroids Contour")
-    if uncertain_centroid_x and uncertain_centroid_y:
-        ax.scatter(uncertain_centroid_x, uncertain_centroid_y, color='orange', marker='X', s=50, edgecolors='black', label="Uncertain Centroids")
-    if angle_uncertain_pairs:
-        angle_uncertain_pairs.sort(key=lambda x: x[0])
-        ucx = [(c.x) for _, c in angle_uncertain_pairs]
-        ucy = [-(c.y) for _, c in angle_uncertain_pairs]
-        ax.plot(ucx, ucy, color='orange', linewidth=2, linestyle='--', zorder=1, label="Uncertain Centroids Contour")
-    if manual_xs is not None and manual_ys is not None:
-        ax.plot(-manual_xs, manual_ys, color='blue', linewidth=2, label="Manual Survey Contour", zorder=51)
-        ax.scatter(-manual_xs, manual_ys, color='blue', s=80, marker='X', edgecolors='black', linewidths=1.2, label="Manual Survey Points", zorder=50)
-    plot_base(ax, "All Data Combined")
-    plt.tight_layout()
-    plt.savefig(os.path.join(date_dir, f"{prefix}all_combined.png"))
-    plt.close(fig)
+    def make_autopct(sizes, counts):
+        def my_autopct(pct):
+            total = sum(counts)
+            count = int(round(pct * total / 100.0))
+            idx = int(round(pct * len(counts) / 100.0))
+            my_autopct.counter += 1
+            i = my_autopct.counter - 1
+            if i < len(counts):
+                return f"{pct:.1f}%\n({counts[i]})"
+            else:
+                return f"{pct:.1f}%"
+        my_autopct.counter = 0
+        return my_autopct
+    # wedges, texts, autotexts = axins.pie(
+        # sizes, labels=labels, colors=colors,
+        # autopct=make_autopct(sizes, counts), startangle=90, textprops={'fontsize': 9}
+    # )
+    # axins.set_title("Point Type %", fontsize=10)
+    plt.show()
 
-def execute():
+def execute(folder):
     """
     Main data processing and visualization pipeline.
     Reads log files, processes sweeps, computes coordinates, removes outliers,
     finds centroids and banks, and visualizes the results.
     """
-    today = datetime.datetime.now().strftime("%m%d%Y")
-    file_pattern = os.path.join(PROJECT_ROOT, "data", today, "*.txt")
+
+    file_pattern = f"/home/braden/StreamScopeDeploy/data/plumcreek/{folder}/streamscope_log_*.txt"
     file_list = glob.glob(file_pattern)
     print(f"Found {len(file_list)} files matching pattern: {file_pattern}")
     all_sweeps = [] 
@@ -813,13 +907,17 @@ def execute():
                                     continue
                                 meas = LidarMeasurement()
                                 meas.timestamp = timestamp
-                                meas.sonar_distance = sweep.sonar_distance
+                                # Set sonar_distance for measurement
+                                if 0 < sweep.sonar_distance < 9000:
+                                    meas.sonar_distance = sweep.sonar_distance
+                                else:
+                                    meas.sonar_distance = 0
                                 meas.angle = angle_val
                                 distances_line = lines[j + 1]
                                 distances = list(map(int, distances_line.split(":")[-1].strip().split(", ")))
                                 meas.distances = distances
                                 num_distances += len(distances)
-                                valid_distances = [d for d in distances if d > 500 and d < 5000]
+                                valid_distances = [d for d in distances if d > 500 and d < 15000]
                                 if valid_distances:
                                     meas.avg_distance = sum(valid_distances) / len(valid_distances)
                                 sweep.measurements.append(meas)
@@ -876,15 +974,23 @@ def execute():
     process_kde_centroids(combined_sweep)
     calculate_cross_sectional_area(combined_sweep)
 
-    def print_combined_sweep_summary(sweeps):
-        """
-        Prints and saves a summary of all sweeps for the day.
-        """
-        summary_lines = []
-        summary_lines.append("=== Sweep Summary ===")
-        all_timestamps = []
-        all_sonar_distances = set()
-        total_measurements = 0
+    def print_combined_sweep_summary(sweep):
+        print("=== Combined Sweep Summary ===")
+        timestamps = [getattr(sweep, 'timestamps', None)]
+        if timestamps:
+            timestamps = sorted(timestamps)
+            print(f"Timestamps: {timestamps[0]} to {timestamps[-1]}")
+        else:
+            print("Timestamps: None")
+        print(f"Accelerometer Available: {getattr(sweep, 'accelerometer_available', None)}")
+        print(f"Sonar Distances: {getattr(sweep, 'sonar_distances', None)} (length: {len(getattr(sweep, 'sonar_distances', []))})")
+        print(f"Area: {getattr(sweep, 'area', None)}")
+        print(f"Stream Width: {getattr(sweep, 'stream_width', None)}")
+        print(f"Left Bank: {sweep.left_bank.x if sweep.left_bank else None}")
+        print(f"Right Bank: {sweep.right_bank.x if sweep.right_bank else None}")
+        print(f"Number of Measurements: {len(getattr(sweep, 'measurements', []))}")
+        print()
+
         total_distances = 0
         total_valid = 0
         total_errors = 0
@@ -893,61 +999,48 @@ def execute():
         total_uncertain_centroids = 0
         total_raw_points = 0
 
-        for sweep in sweeps:
-            timestamps = getattr(sweep, 'timestamps', [])
-            all_timestamps.extend(timestamps)
-            sonar_distances = getattr(sweep, 'sonar_distances', [])
-            all_sonar_distances.update(sonar_distances)
-            measurements = getattr(sweep, 'measurements', [])
-            total_measurements += len(measurements)
-            for meas in measurements:
-                if hasattr(meas, "distances") and isinstance(meas.distances, list):
-                    distances = meas.distances
-                    total_distances += len(distances)
-                    total_errors += sum(1 for d in distances if d > 9990 and d != 9999)
-                    total_timeouts += sum(1 for d in distances if d == 9999)
-                    total_valid += sum(1 for d in distances if d < 9990)
-                if hasattr(meas, "raw_points") and isinstance(meas.raw_points, list):
-                    total_raw_points += len(meas.raw_points)
-                if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None:
-                    total_certain_centroids += 1
-                if hasattr(meas, "uncertain_centroid") and meas.uncertain_centroid is not None:
-                    total_uncertain_centroids += 1
+        for meas in getattr(sweep, 'measurements', []):
+            if hasattr(meas, "distances") and isinstance(meas.distances, list):
+                distances = meas.distances
+                total_distances += len(distances)
+                total_errors += sum(1 for d in distances if d > 9990 and d != 9999)
+                total_timeouts += sum(1 for d in distances if d == 9999)
+                total_valid += sum(1 for d in distances if d < 9990)
+            if hasattr(meas, "raw_points") and isinstance(meas.raw_points, list):
+                total_raw_points += len(meas.raw_points)
+            if hasattr(meas, "certain_centroid") and meas.certain_centroid is not None:
+                total_certain_centroids += 1
+            if hasattr(meas, "uncertain_centroid") and meas.uncertain_centroid is not None:
+                total_uncertain_centroids += 1
 
-        if all_timestamps:
-            all_timestamps = sorted(all_timestamps)
-            summary_lines.append(f"Timestamps: {all_timestamps[0]} to {all_timestamps[-1]}")
-            # Use the date of the first timestamp for the filename
-            date_str = all_timestamps[0].strftime("%Y%m%d")
-        else:
-            summary_lines.append("Timestamps: None")
-            date_str = "unknown"
-        summary_lines.append(f"Sonar Distances: {sorted(all_sonar_distances)} (count: {len(all_sonar_distances)})")
-        summary_lines.append(f"Total Sweeps: {len(sweeps)}")
-        summary_lines.append(f"Total Measurements: {total_measurements}")
-        summary_lines.append(f"Total distances: {total_distances}")
-        summary_lines.append(f"  Valid: {total_valid}")
-        summary_lines.append(f"  Errors: {total_errors}")
-        summary_lines.append(f"  Timeouts: {total_timeouts}")
-        summary_lines.append(f"Total certain centroids: {total_certain_centroids}")
-        summary_lines.append(f"Total uncertain centroids: {total_uncertain_centroids}")
-        summary_lines.append(f"Total raw points: {total_raw_points}")
-        summary_lines.append("=== End of Summary ===\n")
+        print(f"Total distances: {total_distances}")
+        print(f"  Valid: {total_valid}")
+        print(f"  Errors: {total_errors}")
+        print(f"  Timeouts: {total_timeouts}")
+        print(f"Total certain centroids: {total_certain_centroids}")
+        print(f"Total uncertain centroids: {total_uncertain_centroids}")
+        print(f"Total raw points: {total_raw_points}")
+        print("=== End of Summary ===\n")
 
-        # Print to console
-        print("\n".join(summary_lines))
-
-        # Save to file with date in filename
-        out_dir = os.path.join(PROJECT_ROOT, "data", today) 
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, f"{date_str}_summary.txt")
-        with open(out_path, "w") as f:
-            f.write("\n".join(summary_lines))
-
-    # Call the summary function after processing
-    print_combined_sweep_summary([combined_sweep])
+    print_combined_sweep_summary(combined_sweep)
     graph([combined_sweep])
 
 if __name__ == "__main__":
-
-    execute()
+    while True:
+        print("\nStreamScope Cross-Section.\n")
+        print("1. Cross-Section View.")
+        print("2. Exit.")
+        choice = input("Select an option: ") 
+        
+        if choice == '1':
+            date_input = input("Enter date (MMDDYYYY): ").strip()
+            base_dir = "/home/braden/StreamScopeDeploy/data/plumcreek/"
+            folder_pattern = os.path.join(base_dir, f"{date_input}")
+            if not os.path.isdir(folder_pattern):
+                print(f"Folder for date {date_input} not found at {folder_pattern}. Please try again.\n")
+                continue
+            else:
+                execute(date_input)
+        elif choice == '2':
+            print("Exiting the program.")
+            break
